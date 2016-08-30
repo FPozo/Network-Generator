@@ -14,7 +14,7 @@
 from enum import Enum
 
 
-class link_type(Enum):
+class LinkType(Enum):
     """
     Class to define the different link types (I need a class to create an enum)
     """
@@ -30,18 +30,18 @@ class Link:
     " Variable definitions "
 
     __speed = 0                                 # Speed in MB/s
-    __type = 0                                  # Link type
+    __link_type = 0                             # Link type
 
     " Standard function definitions "
 
-    def __init__(self, speed = 100, type = link_type.wired):
+    def __init__(self, speed=100, link_type=LinkType.wired):
         """
         Initialization of the link, if no values given it creates an standard Deterministic Ethernet Link
         :param speed: Speed of the link in MB/s
-        :param type: Type of the network (wired or wireless)
+        :param link_type: Type of the network (wired or wireless)
         """
         self.__speed = speed
-        self.__type = type
+        self.__link_type = link_type
 
     def __str__(self):
         """
@@ -49,7 +49,7 @@ class Link:
         :return: a string with the information
         """
         " Check what kind of link it is "
-        if self.__type == link_type.wired:
+        if self.__link_type == LinkType.wired:
             return "Wired link with speed" + str(self.__speed) + "MB/s"
         else:
             return "Wireless link with speed" + str(self.__speed) + "MB/s"

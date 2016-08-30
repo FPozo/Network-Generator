@@ -14,7 +14,7 @@
 from enum import Enum
 
 
-class node_type(Enum):
+class NodeType(Enum):
     """
     Class to define the different link nodes (I need a class to create an enum)
     """
@@ -30,16 +30,16 @@ class Node:
 
     " Variable definitions "
 
-    __type = 0                           # Type of the node (switch or end system)
+    __node_type = 0                           # Type of the node (switch or end system)
 
     " Standard function definitions "
 
-    def __init__(self, type):
+    def __init__(self, node_type):
         """
         Initialization of the node
-        :param type: Enumerate value of the node type (end system or switch)
+        :param node_type: Enumerate value of the node type (end system or switch)
         """
-        self.__type = type
+        self.__node_type = node_type
 
     def __str__(self):
         """
@@ -47,7 +47,7 @@ class Node:
         :return: a string with the information
         """
         " Check what kind of node it is "
-        if self.__type == node_type.switch:
+        if self.__node_type == NodeType.switch:
             return "Switch node"
         else:
             return "End system node"
