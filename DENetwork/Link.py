@@ -40,6 +40,14 @@ class Link:
         :param speed: Speed of the link in MB/s
         :param link_type: Type of the network (wired or wireless)
         """
+        " Check variable types and values are correct "
+        if type(speed) != int:
+            raise TypeError("The speed is not a number")
+        if speed <= 0:
+            raise ValueError("The speed should be a positive integer")
+        if type(link_type) != LinkType:
+            raise TypeError("The link type should be a LinkType enumerate")
+
         self.__speed = speed
         self.__link_type = link_type
 

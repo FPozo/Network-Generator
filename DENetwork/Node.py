@@ -39,6 +39,9 @@ class Node:
         Initialization of the node
         :param node_type: Enumerate value of the node type (end system or switch)
         """
+        " Check if variable types are correct "
+        if type(node_type) != NodeType:
+            raise TypeError(" The node_type should be a NodeType enumerate ")
         self.__node_type = node_type
 
     def __str__(self):
