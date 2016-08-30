@@ -28,20 +28,20 @@ class Node:
     Class that has all the information of a node in the network
     """
 
-    " Variable definitions "
+    # Variable definitions #
 
     __node_type = 0                           # Type of the node (switch or end system)
 
-    " Standard function definitions "
+    # Standard function definitions #
 
     def __init__(self, node_type):
         """
         Initialization of the node
         :param node_type: Enumerate value of the node type (end system or switch)
         """
-        " Check if variable types are correct "
+        # Check if variable types are correct
         if type(node_type) != NodeType:
-            raise TypeError(" The node_type should be a NodeType enumerate ")
+            raise TypeError("The node_type should be a NodeType enumerate")
         self.__node_type = node_type
 
     def __str__(self):
@@ -49,7 +49,7 @@ class Node:
         String call of the node class
         :return: a string with the information
         """
-        " Check what kind of node it is "
+        # Check what kind of node it is
         if self.__node_type == NodeType.switch:
             return "Switch node"
         else:

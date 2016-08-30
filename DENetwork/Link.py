@@ -27,12 +27,12 @@ class Link:
     Class that has all the information of a communication link (speed and type)
     """
 
-    " Variable definitions "
+    # Variable definitions #
 
     __speed = 0                                 # Speed in MB/s
     __link_type = 0                             # Link type
 
-    " Standard function definitions "
+    # Standard function definitions #
 
     def __init__(self, speed=100, link_type=LinkType.wired):
         """
@@ -40,7 +40,7 @@ class Link:
         :param speed: Speed of the link in MB/s
         :param link_type: Type of the network (wired or wireless)
         """
-        " Check variable types and values are correct "
+        # Check variable types and values are correct
         if type(speed) != int:
             raise TypeError("The speed is not a number")
         if speed <= 0:
@@ -56,7 +56,7 @@ class Link:
         String call of the link class
         :return: a string with the information
         """
-        " Check what kind of link it is "
+        # Check what kind of link it is
         if self.__link_type == LinkType.wired:
             return "Wired link with speed" + str(self.__speed) + "MB/s"
         else:
