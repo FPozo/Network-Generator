@@ -58,6 +58,13 @@ class Link:
         """
         # Check what kind of link it is
         if self.__link_type == LinkType.wired:
-            return "Wired link with speed" + str(self.__speed) + "MB/s"
+            return "Wired link with speed " + str(self.__speed) + "MB/s"
         else:
-            return "Wireless link with speed" + str(self.__speed) + "MB/s"
+            return "Wireless link with speed " + str(self.__speed) + "MB/s"
+
+    def get_type(self):
+        """
+        Get the link type
+        :return: link type
+        """
+        return self.__link_type

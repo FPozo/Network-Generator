@@ -28,7 +28,7 @@ class Frame:
 
     # Standard function definitions #
 
-    def __init__(self, sender, receivers, period, deadline=0, size=1526):
+    def __init__(self, sender, receivers, period=10000, deadline=0, size=1526):
         """
         Initialization of the needed values of a time-triggered frame
         :param sender: end system sender id
@@ -37,7 +37,6 @@ class Frame:
         :param deadline: deadline in microseconds, should be smaller than the period
         :param size: size in bytes of the frame, must be in the Ethernet Standard range
         """
-
         # Check if the types and values are correct
         if type(sender) != int:
             raise TypeError("The sender must be an integer")
@@ -87,3 +86,87 @@ class Frame:
         return_text += "    Deadline      : " + str(self.__deadline) + " microseconds\n"
         return_text += "    Size          : " + str(self.__size) + " bytes"
         return return_text
+
+    def get_period(self):
+        """
+        Gets the period of the frame
+        :return: frame period
+        """
+        return self.__period
+
+    def set_period(self, period):
+        """
+        Sets the period of the frame
+        :param period: period in microseconds
+        :return: None
+        """
+        # Check if the types and values are correct
+        if type(period) != int:
+            raise TypeError("The period must be an integer")
+        if period <= 0:
+            raise ValueError("The period must be a positive integer")
+
+        self.__period = period
+
+    def get_deadline(self):
+        """
+        Gets the deadline of the frame
+        :return: deadline period
+        """
+        return self.__deadline
+
+    def set_deadline(self, deadline):
+        """
+        Sets the deadline of the frame
+        :param deadline: deadline in microseconds
+        :return: None
+        """
+        # Check if the types and values are correct
+        if type(deadline) != int:
+            raise TypeError("The deadline must be an integer")
+        if deadline <= 0:
+            raise ValueError("The deadline must be a positive integer")
+
+        self.__deadline = deadline
+
+    def get_size(self):
+        """
+        Gets the size of the frame
+        :return: size frame
+        """
+        return self.__size
+
+    def set_size(self, size):
+        """
+        Sets the deadline of the frame
+        :param deadline: deadline in microseconds
+        :return: None
+        """
+        # Check if the types and values are correct
+        if type(size) != int:
+            raise TypeError("The frame size must be an integer")
+        if size < 72 or size > 1526:                                    # The size must be inside the Ethernet Standard
+            raise ValueError("The frame size must be between 72 and 1526 (Ethernet Standard)")
+
+        self.__size = size
+
+    def get_sender(self):
+        """
+        Gets the sender of the frame
+        :return: frame sender
+        """
+        return self.__sender
+
+    def get_receivers(self):
+        """
+        Gets the list of receivers
+        :return: receivers list
+        """
+        return self.__receivers
+
+    def get_num_receivers(self):
+        """
+        Gets the number of receivers from that frame
+        :return: number of receivers
+        """
+        return len(self.__receivers)
