@@ -454,8 +454,7 @@ class Network:
         self.__add_param_variable(frame_xml, 'size', frame.get_size())
 
         # Add the frame pahts
-        param = Xml.SubElement(frame_xml, 'param')
-        path_xml = Xml.SubElement(param, 'paths')
+        path_xml = Xml.SubElement(frame_xml, 'paths')
         self.__add_param_variable(path_xml, 'num_paths', frame.get_num_receivers())
         aux_paths = []                  # Save the paths to calculate the splits later on
         aux_path_index = 0
@@ -470,8 +469,7 @@ class Network:
 
         # Add the frame splits
         splits = self.__calculate_splits(aux_paths)                     # Calculate the splits depending on the paths
-        param = Xml.SubElement(frame_xml, 'param')
-        split_xml = Xml.SubElement(param, 'splits')
+        split_xml = Xml.SubElement(frame_xml, 'splits')
         self.__add_param_variable(split_xml, 'num_splits', str(len(splits)))
         if len(splits) > 0:                                             # It there are splits
             for split in splits:                                        # For all splits
