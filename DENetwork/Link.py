@@ -68,3 +68,10 @@ class Link:
         :return: link type
         """
         return self.__link_type
+
+    def get_speed(self):
+        """
+        Get the speed of the link
+        :return: link speed
+        """
+        return self.__speed

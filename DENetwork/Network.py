@@ -440,6 +440,18 @@ class Network:
                 collision_domain_line += str(link) + ';'
             Xml.SubElement(collision_domain_xml, 'links').text = collision_domain_line  # Add the links
 
+    def __add_link_to_xml(self, top, link):
+        """
+        Adds a link to the xml as child of the top
+        :param top: parent of the link
+        :param link: link object to be added
+        :return:
+        """
+        # Add the link information
+        link_xml = Xml.SubElement(top, 'link')
+        self.__add_param_variable(link_xml, 'speed', link.get_speed())
+        self.__add_param_variable(link_xml, 'type', link.get_type())
+
     def __add_frame_to_xml(self, top, frame):
         """
         Adds a frame to the xml as child of the top
@@ -499,7 +511,12 @@ class Network:
         # Write the collision domains information
         self.__add_collision_domains_to_xml(schedule_input)
 
-        # Write the information fo the frames
+        # Write the information of the links
+        links_params = Xml.SubElement(schedule_input, 'link_params')
+        for link in self.__links_container:
+            self.__add_link_to_xml(links_params, link)
+
+        # Write the information of the frames
         frames_params = Xml.SubElement(schedule_input, 'frame_params')
         for frame in self.__frames:
             self.__add_frame_to_xml(frames_params, frame)
