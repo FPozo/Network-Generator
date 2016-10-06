@@ -47,6 +47,14 @@ class Network:
         """
         Initialization of an empty network
         """
+        self.__graph = None
+        self.__switches = []
+        self.__end_systems = []
+        self.__links = []
+        self.__links_container = []
+        self.__paths = []
+        self.__frames = []
+        self.__collision_domains = []
         self.__graph = nx.Graph()       # Initialization of the graph with Networkx
         seed()                          # Seed with current time (many function use random)
     # Private function definitions #
@@ -157,6 +165,7 @@ class Network:
         x10 => wireless with 10 MBs
         :return: None
         """
+        self.__init__()
         description_separated = network_description.split(';')          # Split the string with ;
         if link_description is not None:    # If a link description is done split the string
             links = link_description.split(';')
@@ -527,10 +536,11 @@ class Network:
             f.write(xmlstr)
 
     @staticmethod
-    def get_network_description_from_xml(name):
+    def get_network_description_from_xml(name, num_network):
         """
         Returns the network description (including the link description if exist) from the xml file
         :param name: name of the xml file
+        :param num_network: position of the network in the xml to read
         :return: array with network description and array with link description (formated to work in the network
         function)
         """
@@ -540,7 +550,8 @@ class Network:
             raise Exception("Could not read the xml file")
         root = tree.getroot()
 
-        network_description_xml = root.find('netgen_params/network_description')    # Position the branch
+        networks_description_xml = root.findall('netgen_params/network_description')    # Position the branch
+        network_description_xml = networks_description_xml[num_network]
         network_description_line = ''
         link_info_line = ''
         links_found = False
@@ -584,10 +595,11 @@ class Network:
             return network_description_line[0:-1], link_info_line[0:-1]
 
     @staticmethod
-    def get_collision_domains_xml(name):
+    def get_collision_domains_xml(name, col_dom):
         """
         Returns the matrix of collision domains from the information in the xml file
         :param name: name of the xml file
+        :param col_dom: position of the collision domain to read
         :return: the matrix of collision domains
         """
         try:                                                                        # Try to open the file
@@ -596,7 +608,8 @@ class Network:
             raise Exception("Could not read the xml file")
         root = tree.getroot()
 
-        collision_domains_xml = root.find('netgen_params/collision_domains')    # Position the branch
+        collisions_domains_xml = root.findall('netgen_params/collision_domains')    # Position the branch
+        collision_domains_xml = collisions_domains_xml[col_dom]
         collision_domain = []
         for collision_domain_xml in collision_domains_xml.findall('collision_domain'):  # For all collision domains
             links = collision_domain_xml.find('links').text
@@ -618,29 +631,34 @@ class Network:
         root = tree.getroot()
 
         parameters_xml = root.find('netgen_params/frame_types')
+        num_frames = []
         frame_parameters = []
         first = True
         for parameter_xml in parameters_xml.findall('param'):         # For all the parameters
             try:        # Save the parameters and check if the values are correct
                 if first:
                     first = False
-                    frame_parameters.append(int(parameter_xml.find('value').text))
+                    for n in parameter_xml.findall('value'):
+                        num_frames.append(int(n.text))
                 else:
-                    frame_parameters.append(float(parameter_xml.find('value').text))
-                    if frame_parameters[-1] < 0.0:
-                        raise ValueError('The percentages should be 0 or positive')
+                    frame_parameters.append([])
+                    for n in parameter_xml.findall('value'):
+                        frame_parameters[-1].append(float(n.text))
+                        if frame_parameters[-1][-1] < 0.0:
+                            raise ValueError('The percentages should be 0 or positive')
             except:
                 raise TypeError('The types are incorrect')
-            if frame_parameters[0] <= 0:
+            if not all(num_frames) > 0:
                 raise ValueError('The number of frames should be positive')
 
-        return frame_parameters[0], frame_parameters[1:]
+        return num_frames, frame_parameters
 
     @staticmethod
-    def get_frames_variables_from_xml(name):
+    def get_frames_variables_from_xml(name, num_variable):
         """
         Returns the lists of variables for the periods, deadlines and sizes
         :param name: name of the xml file
+        :param num_variable: posision of the num variable
         :return: lists of periods, percentage periods, deadlines and sizes
         """
         try:                                                                        # Try to open the file
@@ -657,7 +675,8 @@ class Network:
         deadlines = False
         sizes = False
 
-        variables_xml = root.find('netgen_params/frame_variables')
+        multiple_variables_xml = root.findall('netgen_params/frame_variables')
+        variables_xml = multiple_variables_xml[num_variable]
         for parameter_xml in variables_xml.findall('variable'):                     # For all parameters
             period.append(int(parameter_xml.find('period').text))                   # Save the period
             per_period.append(float(parameter_xml.find('per_period').text))           # Save the percentage
@@ -685,13 +704,30 @@ class Network:
         :param output_name: name of the output xml file
         :return: None
         """
-        network, link = self.get_network_description_from_xml(name)
-        self.create_network(network, link)
-        self.generate_paths()
-        collision_domains = self.get_collision_domains_xml(name)
-        self.define_collision_domains(collision_domains)
+        try:                                                                        # Try to open the file
+            tree = Xml.parse(name)
+        except:
+            raise Exception("Could not read the xml file")
+        root = tree.getroot()
+        num_network_description_xml = len(root.findall('netgen_params/network_description'))  # Numbers of network
+        num_collision_domains_xml = len(root.findall('netgen_params/collision_domains'))
+        if num_collision_domains_xml != num_network_description_xml:
+            raise Exception('Every network description should have its collision domain')
+        num_variables_xml = len(root.findall('netgen_params/frame_variables'))
+        i = 0
         num_frames, percentages = self.get_frames_description_from_xml(name)
-        self.generate_frames(num_frames, percentages[0], percentages[1], percentages[3], percentages[2])
-        periods, per_periods, deadlines, sizes = self.get_frames_variables_from_xml(name)
-        self.add_frame_params(periods, per_periods, deadlines, sizes)
-        self.generate_xml_output(output_name)
+        for num_network in range(num_network_description_xml):
+            network, link = self.get_network_description_from_xml(name, num_network)
+            for num_frame in num_frames:
+                for num_percentage in range(len(percentages[0])):
+                    for num_variables in range(num_variables_xml):
+                        collision_domains = self.get_collision_domains_xml(name, num_network)
+                        periods, per_periods, deadlines, sizes = self.get_frames_variables_from_xml(name, num_variables)
+                        self.create_network(network, link)
+                        self.generate_paths()
+                        self.define_collision_domains(collision_domains)
+                        self.generate_frames(num_frame, percentages[0][num_percentage], percentages[1][num_percentage],
+                                             percentages[3][num_percentage], percentages[2][num_percentage])
+                        self.add_frame_params(periods, per_periods, deadlines, sizes)
+                        self.generate_xml_output(str(i))
+                        i += 1
