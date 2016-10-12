@@ -20,6 +20,8 @@ from DENetwork.Link import *
 from DENetwork.Frame import *
 import xml.etree.ElementTree as Xml
 from xml.dom import minidom
+import sys
+import os
 
 
 class Network:
@@ -347,7 +349,7 @@ class Network:
                 receivers.remove(sender)
                 shuffle(receivers)
                 num_receivers = randint(1, len(receivers))
-                receivers = receivers[0:num_receivers - 1]
+                receivers = receivers[0:num_receivers]
             else:                                       # Locally frame
                 possible_receivers = list(self.__end_systems)
                 possible_receivers.remove(sender)
@@ -697,24 +699,23 @@ class Network:
         else:
             return period, per_period, None, None
 
-    def create_network_from_xml(self, name, output_name):
+    def create_network_from_xml(self, name):
         """
         Create the network from the information from the xml
         :param name: name of the xml file
-        :param output_name: name of the output xml file
         :return: None
         """
         try:                                                                        # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
+        os.makedirs("networks")
         root = tree.getroot()
         num_network_description_xml = len(root.findall('netgen_params/network_description'))  # Numbers of network
         num_collision_domains_xml = len(root.findall('netgen_params/collision_domains'))
         if num_collision_domains_xml != num_network_description_xml:
             raise Exception('Every network description should have its collision domain')
         num_variables_xml = len(root.findall('netgen_params/frame_variables'))
-        i = 0
         num_frames, percentages = self.get_frames_description_from_xml(name)
         for num_network in range(num_network_description_xml):
             network, link = self.get_network_description_from_xml(name, num_network)
@@ -729,5 +730,14 @@ class Network:
                         self.generate_frames(num_frame, percentages[0][num_percentage], percentages[1][num_percentage],
                                              percentages[3][num_percentage], percentages[2][num_percentage])
                         self.add_frame_params(periods, per_periods, deadlines, sizes)
-                        self.generate_xml_output(str(i))
-                        i += 1
+                        string_for_hash = "net-" + network + "&link-" + link + "&frame-" + str(num_frame) + "&per-"
+                        string_for_hash += str(percentages[0][num_percentage]) + ","
+                        string_for_hash += str(percentages[1][num_percentage]) + ","
+                        string_for_hash += str(percentages[3][num_percentage]) + ","
+                        string_for_hash += str(percentages[2][num_percentage]) + "&period-" + str(periods)
+                        string_for_hash += "&per_periods-" + str(per_periods) + "&deadlines-" + str(deadlines)
+                        string_for_hash += "&sizes-" + str(sizes)
+                        hash_num = hash(string_for_hash)
+                        hash_num += sys.maxsize + 1
+                        os.makedirs("networks/" + str(hash_num))
+                        self.generate_xml_output("networks/" + str(hash_num) + "/" + str(hash_num))
