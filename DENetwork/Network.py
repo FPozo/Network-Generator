@@ -740,4 +740,5 @@ class Network:
                         hash_num = hash(string_for_hash)
                         hash_num += sys.maxsize + 1
                         os.makedirs("networks/" + str(hash_num))
+                        os.makedirs("networks/" + str(hash_num) + "/schedules")
                         self.generate_xml_output("networks/" + str(hash_num) + "/" + str(hash_num))
