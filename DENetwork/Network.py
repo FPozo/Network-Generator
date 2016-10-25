@@ -15,13 +15,16 @@
 
 from random import seed, random, choice, shuffle, randint
 import networkx as nx
+import copy
 from DENetwork.Node import *
 from DENetwork.Link import *
 from DENetwork.Frame import *
+from DENetwork.Dependency import *
 import xml.etree.ElementTree as Xml
 from xml.dom import minidom
-import sys
 import os
+import shutil
+from decimal import *
 
 
 class Network:
@@ -31,15 +34,17 @@ class Network:
 
     # Variable definitions #
 
-    __graph = None                      # Network Graph built with the NetworkX package
-    __switches = []                     # List with all the switches in the network
-    __end_systems = []                  # List with all the end systems in the network
-    __links = []                        # List with all the links in the network
-    __links_container = []              # Contains the objects links (separated to increase generate path performance)
-    __paths = []                        # Matrix with the number of end systems as index for x and y, it contains
+    __graph = None  # Network Graph built with the NetworkX package
+    __switches = []  # List with all the switches in the network
+    __end_systems = []  # List with all the end systems in the network
+    __links = []  # List with all the links in the network
+    __links_container = []  # Contains the objects links (separated to increase generate path performance)
+    __paths = []  # Matrix with the number of end systems as index for x and y, it contains
     # a list of links to describe the path from end system x to end system y, None if x = y
-    __frames = []                       # List with all the frames in the network
-    __collision_domains = []            # Matrix with list of links that share the same frequency
+    __frames = []  # List with all the frames in the network
+    __collision_domains = []  # Matrix with list of links that share the same frequency
+    __num_dependencies = 0  # Number of dependencies
+    __dependencies = []  # List of dependencies
 
     # Auxiliary variable definitions #
 
@@ -57,8 +62,9 @@ class Network:
         self.__paths = []
         self.__frames = []
         self.__collision_domains = []
-        self.__graph = nx.Graph()       # Initialization of the graph with Networkx
-        seed()                          # Seed with current time (many function use random)
+        self.__graph = nx.Graph()  # Initialization of the graph with Networkx
+        seed()  # Seed with current time (many function use random)
+
     # Private function definitions #
 
     def __add_switch(self):
@@ -68,7 +74,7 @@ class Network:
         """
         # Add into the Networkx graph a new node with type => object.switch node, id => switch number
         self.__graph.add_node(self.__graph.number_of_nodes(), type=Node(NodeType.switch), id=len(self.__switches))
-        self.__switches.append(self.__graph.number_of_nodes() - 1)      # Save the identifier of Networkx
+        self.__switches.append(self.__graph.number_of_nodes() - 1)  # Save the identifier of Networkx
 
     def __add_link(self, source, destination, link_type=LinkType.wired, speed=100):
         """
@@ -82,7 +88,7 @@ class Network:
         # Add into the Networkx graph a new link between two node with type => object.link, id => link number
         self.__graph.add_edge(source, destination, type=Link(speed=speed, link_type=link_type),
                               id=self.__graph.number_of_edges() - 1)
-        self.__links.append([source, destination])      # Saves the same info in our link list with nodes
+        self.__links.append([source, destination])  # Saves the same info in our link list with nodes
         self.__links.append([destination, source])
         self.__links_container.append(Link(speed=speed, link_type=link_type))  # Saves the object with same index
         self.__links_container.append(Link(speed=speed, link_type=link_type))
@@ -93,9 +99,9 @@ class Network:
         :param switch: id of the switch
         :return: None
         """
-        self.__graph.node[switch]['type'] = Node(NodeType.end_system)   # Update the information into the graph
+        self.__graph.node[switch]['type'] = Node(NodeType.end_system)  # Update the information into the graph
         self.__graph.node[switch]['id'] = len(self.__end_systems)
-        self.__end_systems.append(switch)                               # Update the information into our lists
+        self.__end_systems.append(switch)  # Update the information into our lists
         self.__switches.remove(switch)
 
     def __add_end_system(self):
@@ -117,24 +123,24 @@ class Network:
         :return: the updated number of calls
         """
         try:
-            if description[num_calls] < 0:      # Create new leafs as end systems and link them to the parent node
-                for i in range(abs(description[num_calls])):    # For all the new leafs add the end system and links
+            if description[num_calls] < 0:  # Create new leafs as end systems and link them to the parent node
+                for i in range(abs(description[num_calls])):  # For all the new leafs add the end system and links
                     self.__add_end_system()
                     if links is None:
                         self.__add_link(parent_node, self.__graph.number_of_nodes() - 1)
-                    else:                       # If there exist description in links, add them
+                    else:  # If there exist description in links, add them
                         link_type = LinkType.wired if links[self.__graph.number_of_edges() - 1][0] == 'w' \
                             else LinkType.wireless
                         speed = int(links[self.__graph.number_of_edges() - 1][1:])
                         self.__add_link(parent_node, self.__graph.number_of_nodes() - 1, link_type, speed)
 
-            elif description[num_calls] == 0:   # Finished branch, change switch parent into end system
+            elif description[num_calls] == 0:  # Finished branch, change switch parent into end system
                 self.__change_switch_to_end_system(parent_node)
 
-            elif description[num_calls] > 0:    # Create new branches with switches
-                for i in range(description[num_calls]):     # For all new brances, create the switch and link it
+            elif description[num_calls] > 0:  # Create new branches with switches
+                for i in range(description[num_calls]):  # For all new brances, create the switch and link it
                     self.__add_switch()
-                    new_parent = self.__graph.number_of_nodes() - 1     # Save new parent node
+                    new_parent = self.__graph.number_of_nodes() - 1  # Save new parent node
                     if links is None:
                         self.__add_link(parent_node, self.__graph.number_of_nodes() - 1)
                     else:  # If there exist description in links, add them
@@ -168,10 +174,10 @@ class Network:
         :return: None
         """
         self.__init__()
-        description_separated = network_description.split(';')          # Split the string with ;
-        if link_description is not None:    # If a link description is done split the string
+        description_separated = network_description.split(';')  # Split the string with ;
+        if link_description is not None:  # If a link description is done split the string
             links = link_description.split(';')
-        else:                           # If not, notify links are standard (wired and 100 MBs)
+        else:  # If not, notify links are standard (wired and 100 MBs)
             links = None
 
         # Check if the input is only ; and integers
@@ -184,7 +190,7 @@ class Network:
             if not all((link[0] == 'w' or link[0] == 'x') for link in links):
                 raise TypeError("The link description is wrongly formulated, some elements are not valid types")
 
-        description = [int(numeric_string) for numeric_string in description_separated]     # Parse the string into ints
+        description = [int(numeric_string) for numeric_string in description_separated]  # Parse the string into ints
         # Start the recursive call with parent switch 0
         self.__add_switch()
         num_calls = self.__recursive_create_network(description, links, 0, 0)
@@ -203,7 +209,7 @@ class Network:
         for i in range(len(collision_domains)):
             for j in range(len(collision_domains[i])):
                 collision_domains[i][j] += 2
-                collision_domains[i][j] %= 20
+                collision_domains[i][j] %= len(self.__links)
 
         # Check if the types and values are correct
         if type(collision_domains) != list:
@@ -226,14 +232,14 @@ class Network:
         third dimension is a list of INDEXES for the dataflow link list (not links ids, pointers to the link lists)
         :return: None
         """
-        for i in range(self.__graph.number_of_nodes()):            # Init the path 3-dimension matrix with empty arrays
+        for i in range(self.__graph.number_of_nodes()):  # Init the path 3-dimension matrix with empty arrays
             self.__paths.append([])
             for j in range(self.__graph.number_of_nodes()):
                 self.__paths[i].append([])
 
-        for sender in self.__end_systems:                   # We iterate over all the senders and receivers
+        for sender in self.__end_systems:  # We iterate over all the senders and receivers
             for receiver in self.__end_systems:
-                if sender != receiver:                      # If they are not the same search the path
+                if sender != receiver:  # If they are not the same search the path
                     # As the paths save the indexes, of the links, we need to search them with tuples of nodes, we then
                     # iterate throught all nodes find by the shortest path function of Networkx, and skip the first
                     # iteration as we do not have a tuple of nodes yet
@@ -242,7 +248,7 @@ class Network:
                     for h in nx.shortest_path(self.__graph, sender, receiver):  # For all nodes in the path
                         if not first_iteration:
                             first_iteration = True
-                        else:                       # Find the index in the link list with the actual and previous node
+                        else:  # Find the index in the link list with the actual and previous node
                             self.__paths[sender][receiver].append(self.__links.index([previos_node, h]))
                         previos_node = h
 
@@ -254,36 +260,36 @@ class Network:
         :param paths: 3-dimensional path matrix
         :return: 3-dimesnsional split matrix
         """
-        splits = []                                     # Matrix to save all the splits
-        path_index = 0                                  # Horizontal index of the path matrix
-        split_index = 0                                 # Vertical index of the split matrix
-        first_path_flag = False                         # Flag to identify a first found path
-        found_split_flag = False                        # Flag to identify a split has been found
-        paths_left = len(paths)                         # Paths left to be checked
-        while paths_left > 1:                           # While we did not finish all different splits
-            paths_left = 0                              # Initialize the paths left
-            for i in range(len(paths)):                 # For all the different paths
-                try:                                    # The try is needed because a path ended will raise an exception
-                    if not first_path_flag:             # Check if it is the first path found
+        splits = []  # Matrix to save all the splits
+        path_index = 0  # Horizontal index of the path matrix
+        split_index = 0  # Vertical index of the split matrix
+        first_path_flag = False  # Flag to identify a first found path
+        found_split_flag = False  # Flag to identify a split has been found
+        paths_left = len(paths)  # Paths left to be checked
+        while paths_left > 1:  # While we did not finish all different splits
+            paths_left = 0  # Initialize the paths left
+            for i in range(len(paths)):  # For all the different paths
+                try:  # The try is needed because a path ended will raise an exception
+                    if not first_path_flag:  # Check if it is the first path found
                         first_split = paths[i][path_index]  # Save to compare with other paths to check new splits
                         first_path_flag = True
                     else:
-                        if paths[i][path_index] != first_split:     # If it is difference, a new split has been found
-                            if not found_split_flag:        # If is the first split, save both links
+                        if paths[i][path_index] != first_split:  # If it is difference, a new split has been found
+                            if not found_split_flag:  # If is the first split, save both links
                                 splits.append([])
                                 splits[split_index].append(first_split)
                                 found_split_flag = True
-                            if paths[i][path_index] not in splits[split_index]:     # If the split is not in the list
-                                splits[split_index].append(paths[i][path_index])    # Save the link split
-                    paths_left += 1                     # The path has not ended if no exception had been raised
-                except IndexError:                      # If there is an exception, the path ended and we continue
+                            if paths[i][path_index] not in splits[split_index]:  # If the split is not in the list
+                                splits[split_index].append(paths[i][path_index])  # Save the link split
+                    paths_left += 1  # The path has not ended if no exception had been raised
+                except IndexError:  # If there is an exception, the path ended and we continue
                     pass
-            if found_split_flag:                        # If a split has been found
-                split_index += 1                        # Increase the split index
+            if found_split_flag:  # If a split has been found
+                split_index += 1  # Increase the split index
                 found_split_flag = False
-            first_path_flag = False                     # Update the path flags and the path index for next iteration
+            first_path_flag = False  # Update the path flags and the path index for next iteration
             path_index += 1
-        return splits                                   # Return the filled splits matrix
+        return splits  # Return the filled splits matrix
 
     def generate_frames(self, number_frames, per_broadcast=1.0, per_single=0.0, per_locally=0.0, per_multi=0.0):
         """
@@ -333,34 +339,34 @@ class Network:
         per_locally /= sum_per
         per_single /= sum_per
 
-        for frame in range(number_frames):              # Iterate for all the frames that needs to be created
-            frame_type = random()                       # Generate random to see which type of frame is
-            sender = choice(self.__end_systems)         # Select the sender end system
+        for frame in range(number_frames):  # Iterate for all the frames that needs to be created
+            frame_type = random()  # Generate random to see which type of frame is
+            sender = choice(self.__end_systems)  # Select the sender end system
             # Select  receivers dependending of the frame type
-            if frame_type < per_broadcast:              # Broadcast frame
-                receivers = list(self.__end_systems)    # List of all end systems but the sender
+            if frame_type < per_broadcast:  # Broadcast frame
+                receivers = list(self.__end_systems)  # List of all end systems but the sender
                 receivers.remove(sender)
-            elif frame_type < per_broadcast + per_single:   # Single frame
-                receivers = list(self.__end_systems)    # Select single receiver that is not the sender
+            elif frame_type < per_broadcast + per_single:  # Single frame
+                receivers = list(self.__end_systems)  # Select single receiver that is not the sender
                 receivers.remove(sender)
                 receivers = [choice(receivers)]
-            elif frame_type < per_broadcast + per_single + per_multi:   # Multi frame
-                receivers = list(self.__end_systems)    # Select a random number of receivers
+            elif frame_type < per_broadcast + per_single + per_multi:  # Multi frame
+                receivers = list(self.__end_systems)  # Select a random number of receivers
                 receivers.remove(sender)
                 shuffle(receivers)
                 num_receivers = randint(1, len(receivers))
                 receivers = receivers[0:num_receivers]
-            else:                                       # Locally frame
+            else:  # Locally frame
                 possible_receivers = list(self.__end_systems)
                 possible_receivers.remove(sender)
                 distances = [len(self.__paths[sender][receiver]) for receiver in possible_receivers]
                 min_distance = min(distance for distance in distances)  # Find the minimum distance
                 receivers = []
-                for receiver in possible_receivers:     # Copy receivers with min_distance
+                for receiver in possible_receivers:  # Copy receivers with min_distance
                     if len(self.__paths[sender][receiver]) == min_distance:
                         receivers.append(receiver)
 
-            self.__frames.append(Frame(sender, receivers))      # Add the frame to the list of frames
+            self.__frames.append(Frame(sender, receivers))  # Add the frame to the list of frames
 
     def add_frame_params(self, periods, per_periods, deadlines=None, sizes=None):
         """
@@ -379,7 +385,7 @@ class Network:
         if not all(period >= 0 for period in periods):  # Check if all items in the list are positive
             raise ValueError("All periods id must be a positive integer")
 
-        if type(per_periods) != list:                   # Check if all elements on the list are reals
+        if type(per_periods) != list:  # Check if all elements on the list are reals
             raise TypeError("The percentage of periods must be a list of reals")
         if not all(type(per_period) == int or type(per_period) == float for per_period in per_periods):
             raise TypeError("All items in the percentage of periods list must be a integer")
@@ -406,23 +412,170 @@ class Network:
             if len(periods) != len(deadlines):
                 raise ValueError("The deadlines list must be of equal size as the others")
 
-        per_periods = [float(per_period)/sum(per_periods) for per_period in per_periods]    # Normalize percentages
+        per_periods = [float(per_period) / sum(per_periods) for per_period in per_periods]  # Normalize percentages
 
-        for i in range(len(self.__frames)):                  # For all frames
+        for i in range(len(self.__frames)):  # For all frames
             type_period = random()
             accumulate_period = 0
             for j, per_period in enumerate(per_periods):
-                if type_period < per_period + accumulate_period:    # Choice one period for the frame
-                    self.__frames[i].set_period(periods[j])         # Set a period to the frame
+                if type_period < per_period + accumulate_period:  # Choice one period for the frame
+                    self.__frames[i].set_period(periods[j])  # Set a period to the frame
                     if deadlines is not None:
-                        self.__frames[i].set_deadline(int(periods[j] * deadlines[j]))      # Set the deadline
+                        self.__frames[i].set_deadline(int(periods[j] * deadlines[j]))  # Set the deadline
                     else:
-                        self.__frames[i].set_deadline(periods[j])   # If not, deadline = period
-                    if sizes is not None:                           # If there are sizes, set it
+                        self.__frames[i].set_deadline(periods[j])  # If not, deadline = period
+                    if sizes is not None:  # If there are sizes, set it
                         self.__frames[i].set_size(sizes[j])
-                    break                                           # Once selected, go out
+                    break  # Once selected, go out
                 else:
-                    accumulate_period += per_period                 # If not, advance in the list
+                    accumulate_period += per_period  # If not, advance in the list
+
+    def __add_dependencies(self, aux_frames, number_dep, max_succ, actual_depth, max_depth, min_time_waiting,
+                           max_time_waiting, min_time_deadline, max_time_deadline, per_waiting, per_deadline, per_both,
+                           pred_frame_index, pred_link):
+        """
+        Fills the dependency tree from its root with a max depth and successors with a recursive function
+        :param aux_frames: array of frames where we will ubuilt our dependencies
+        :param number_dep: number of desired dependencies
+        :param max_succ: max successor of dependencies at the tree
+        :param actual_depth: depth of the dependendecy tree in this recursive call
+        :param max_depth: max depth of dependencies at the tree
+        :param min_time_waiting: min time offset desired for waiting dependencies
+        :param min_time_waiting: max time offset desired for waiting dependencies
+        :param min_time_deadline: min time offset desired for deadline dependencies
+        :param max_time_deadline: max time offset desired for deadline dependencies
+        :param per_waiting: percentage of waiting dependencies
+        :param per_deadline: percentage of deadline dependencies
+        :param per_both: percentage of both dependencies
+        :param pred_frame_index: index of the predecessor frame of the dependency
+        :param pred_link: index of the predecessor link of the dependency
+        :return:
+        """
+        for i in range(max_succ):
+            if len(self.__dependencies) == number_dep:  # If we generated enough dependencies
+                break
+            if len(aux_frames) == 0:  # If we cannot generate more dependencies
+                break
+            if random() < ((max_succ - i) / max_succ):  # If lord random wants a successor
+                # Select the successor of the dependency
+                succ_frame = choice(aux_frames)
+                succ_frame_index = self.__frames.index(succ_frame)
+                aux_frames.remove(succ_frame)
+                # Get the link of the successor
+                succ_sender = succ_frame.get_sender()
+                succ_receiver = choice(succ_frame.get_receivers())
+                succ_link = self.__paths[succ_sender][succ_receiver][-1]
+                # Get the waiting and/or deadline times
+                random_value = random()
+                if random_value < per_waiting:
+                    wait_time = randint(min_time_waiting, max_time_waiting)
+                    dead_time = 0
+                elif random_value < per_waiting + per_deadline:
+                    wait_time = 0
+                    dead_time = randint(min_time_deadline, max_time_deadline)
+                else:
+                    wait_time = randint(min_time_waiting, max_time_waiting)
+                    dead_time = randint(min_time_deadline, max_time_deadline)
+                # Add the dependency
+                self.__dependencies.append(Dependency(pred_frame_index, pred_link, succ_frame_index, succ_link,
+                                                      wait_time, dead_time))
+
+                if random() < ((max_depth - actual_depth) / max_depth):  # If lord random wants more depth
+                    self.__add_dependencies(aux_frames, number_dep, max_succ, actual_depth + 1, max_depth,
+                                            min_time_waiting, max_time_waiting, min_time_deadline, max_time_deadline,
+                                            per_waiting, per_deadline, per_both, succ_frame_index, succ_link)
+            else:
+                break
+
+    def generate_dependencies(self, number_dep, max_succ, max_depth, min_time_waiting, max_time_waiting,
+                              min_time_deadline, max_time_deadline, per_waiting, per_deadline, per_both):
+        """
+        Generate the dependencies for a given array of frames. It generates roots of dependency trees and call a
+        recursive function to start building the tree.
+        It builds trees until the desired number of dependencies is accomplished or until no more dependencies can be
+        created.
+        It creates two different dependencies (intra/out) with different predefined ranges.
+        Per waiting/deadline/both should be equal to 1.0
+        :param number_dep: number of desired dependencies
+        :param max_succ: max successor of dependencies at the tree
+        :param max_depth: max depth of dependencies at the tree
+        :param min_time_waiting: min time offset desired for waiting dependencies
+        :param min_time_waiting: max time offset desired for waiting dependencies
+        :param min_time_deadline: min time offset desired for deadline dependencies
+        :param max_time_deadline: max time offset desired for deadline dependencies
+        :param per_waiting: percentage of waiting dependencies
+        :param per_deadline: percentage of deadline dependencies
+        :param per_both: percentage of both dependencies
+        :return:
+        """
+        # Check if the types and values are correct
+        if type(number_dep) != int:
+            raise TypeError("The number of dependencies must be an integer")
+        if number_dep < 0:
+            raise ValueError("The number of dependencies must be a positive integer")
+        if type(max_succ) != int:
+            raise TypeError("The number of max_succ must be an integer")
+        if max_succ < 0:
+            raise ValueError("The number of max_succ must be a positive integer")
+        if type(max_depth) != int:
+            raise TypeError("The number of max_depth must be an integer")
+        if max_depth < 0:
+            raise ValueError("The number of max_depth must be a positive integer")
+        if type(min_time_waiting) != int:
+            raise TypeError("The number of min_time_waiting must be an integer")
+        if min_time_waiting < 0:
+            raise ValueError("The number of min_time_waiting must be a positive integer")
+        if type(max_time_waiting) != int:
+            raise TypeError("The number of max_time_waiting must be an integer")
+        if max_time_waiting <= 0:
+            raise ValueError("The number of max_time_waiting must be a positive integer")
+        if type(min_time_deadline) != int:
+            raise TypeError("The number of min_time_deadline must be an integer")
+        if min_time_deadline < 0:
+            raise ValueError("The number of min_time_deadline must be a positive integer")
+        if type(max_time_deadline) != int:
+            raise TypeError("The number of max_time_deadline must be an integer")
+        if max_time_deadline <= 0:
+            raise ValueError("The number of max_time_deadline must be a positive integer")
+        if min_time_deadline > max_time_deadline:
+            raise ValueError("The minimum deadline time should be smaller than the maximum one")
+        if min_time_waiting > max_time_waiting:
+            raise ValueError("The minimum waiting time should be smaller than the maximum one")
+        if type(per_waiting) != float:
+            raise TypeError("The percentage of waiting dependencies should be a float")
+        if per_waiting < 0:
+            raise ValueError("The percentage of waiting dependencies must be a positive float")
+        if type(per_deadline) != float:
+            raise TypeError("The percentage of deadline dependencies should be a float")
+        if per_deadline < 0:
+            raise ValueError("The percentage of deadline dependencies must be a positive float")
+        if type(per_both) != float:
+            raise TypeError("The percentage of both dependencies should be a float")
+        if per_both < 0:
+            raise ValueError("The percentage of both dependencies must be a positive float")
+
+        # Normallize the percentage so the sum is always 1.0
+        sum_per = float(per_waiting + per_waiting + per_both)
+        per_waiting /= sum_per
+        per_deadline /= sum_per
+        per_both /= sum_per
+
+        aux_frames = copy.copy(self.__frames)
+        # While there are dependencies to make, or it is not possible to do more
+        while (len(self.__dependencies) < number_dep) and (len(aux_frames) > 0):
+            # Choose predecesor frame and remove it from the frames list
+            pred_frame = choice(aux_frames)
+            pred_frame_index = self.__frames.index(pred_frame)
+            aux_frames.remove(pred_frame)
+            # Get sender and receivers to take the last link of its path
+            pred_sender = pred_frame.get_sender()
+            pred_receiver = choice(pred_frame.get_receivers())
+            pred_link = self.__paths[pred_sender][pred_receiver][-1]
+            # Call the recursive function to start building the tree from that root dependency
+            self.__add_dependencies(aux_frames, number_dep, max_succ, 0, max_depth, min_time_waiting, max_time_waiting,
+                                    min_time_deadline, max_time_deadline, per_waiting, per_deadline, per_both,
+                                    pred_frame_index, pred_link)
+            self.__num_dependencies = len(self.__dependencies)
 
     @staticmethod
     def __add_param_variable(top, name, value):
@@ -444,10 +597,10 @@ class Network:
         :return: None
         """
         collision_domains_xml = Xml.SubElement(top, 'collision_domains')
-        for collision_domain in self.__collision_domains:           # For all the collision domains
+        for collision_domain in self.__collision_domains:  # For all the collision domains
             collision_domain_xml = Xml.SubElement(collision_domains_xml, 'collision_domain')
             collision_domain_line = ''
-            for link in collision_domain:                           # For all the links in the collision domain
+            for link in collision_domain:  # For all the links in the collision domain
                 collision_domain_line += str(link) + ';'
             Xml.SubElement(collision_domain_xml, 'links').text = collision_domain_line  # Add the links
 
@@ -479,27 +632,43 @@ class Network:
         # Add the frame pahts
         path_xml = Xml.SubElement(frame_xml, 'paths')
         self.__add_param_variable(path_xml, 'num_paths', frame.get_num_receivers())
-        aux_paths = []                  # Save the paths to calculate the splits later on
+        aux_paths = []  # Save the paths to calculate the splits later on
         aux_path_index = 0
-        for receiver in frame.get_receivers():                          # For all the paths
+        for receiver in frame.get_receivers():  # For all the paths
             path_line = ''
-            aux_paths.append([])                                        # Init for the current path
-            for link in self.__paths[frame.get_sender()][receiver]:     # For all the links in the path
-                path_line += str(link) + ';'                            # Save the link on the path line
-                aux_paths[aux_path_index].append(link)                  # Save the link for calculate the split
-            Xml.SubElement(path_xml, 'path').text = path_line           # Adds the path
-            aux_path_index += 1                                         # Prepare to save new path
+            aux_paths.append([])  # Init for the current path
+            for link in self.__paths[frame.get_sender()][receiver]:  # For all the links in the path
+                path_line += str(link) + ';'  # Save the link on the path line
+                aux_paths[aux_path_index].append(link)  # Save the link for calculate the split
+            Xml.SubElement(path_xml, 'path').text = path_line  # Adds the path
+            aux_path_index += 1  # Prepare to save new path
 
         # Add the frame splits
-        splits = self.__calculate_splits(aux_paths)                     # Calculate the splits depending on the paths
+        splits = self.__calculate_splits(aux_paths)  # Calculate the splits depending on the paths
         split_xml = Xml.SubElement(frame_xml, 'splits')
         self.__add_param_variable(split_xml, 'num_splits', str(len(splits)))
-        if len(splits) > 0:                                             # It there are splits
-            for split in splits:                                        # For all splits
+        if len(splits) > 0:  # It there are splits
+            for split in splits:  # For all splits
                 split_line = ''
-                for link in split:                                      # For all links on the split
+                for link in split:  # For all links on the split
                     split_line += str(link) + ';'
-                Xml.SubElement(split_xml, 'split').text = split_line    # Adds the split
+                Xml.SubElement(split_xml, 'split').text = split_line  # Adds the split
+
+    def __add_dependency_to_xml(self, top, dependency):
+        """
+        Add a dependency to the xml as child of the top
+        :param top: parent of the frame
+        :param dependency: dependency object to be added
+        :return:
+        """
+        # Write dependency params
+        dependency_xml = Xml.SubElement(top, 'dependency')
+        self.__add_param_variable(dependency_xml, 'pred_frame', dependency.get_pred_frame())
+        self.__add_param_variable(dependency_xml, 'pred_link', dependency.get_pred_link())
+        self.__add_param_variable(dependency_xml, 'succ_frame', dependency.get_succ_frame())
+        self.__add_param_variable(dependency_xml, 'succ_link', dependency.get_succ_link())
+        self.__add_param_variable(dependency_xml, 'waiting_time', dependency.get_waiting_time())
+        self.__add_param_variable(dependency_xml, 'deadline_time', dependency.get_deadline_time())
 
     def generate_xml_output(self, name):
         """
@@ -532,6 +701,11 @@ class Network:
         for frame in self.__frames:
             self.__add_frame_to_xml(frames_params, frame)
 
+        # Write the information of the dependencies
+        dependency_params = Xml.SubElement(schedule_input, 'dependency_params')
+        for dependency in self.__dependencies:
+            self.__add_dependency_to_xml(dependency_params, dependency)
+
         # Write the final file
         xmlstr = minidom.parseString(Xml.tostring(schedule_input)).toprettyxml(indent="   ")
         with open(name, "w") as f:
@@ -546,27 +720,27 @@ class Network:
         :return: array with network description and array with link description (formated to work in the network
         function)
         """
-        try:                                                                        # Try to open the file
+        try:  # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
         root = tree.getroot()
 
-        networks_description_xml = root.findall('netgen_params/network_description')    # Position the branch
+        networks_description_xml = root.findall('netgen_params/network_description')  # Position the branch
         network_description_xml = networks_description_xml[num_network]
         network_description_line = ''
         link_info_line = ''
         links_found = False
 
-        for difurcation in network_description_xml.findall('difurcation'):          # For all difurcations found
+        for difurcation in network_description_xml.findall('difurcation'):  # For all difurcations found
             network_description_line += difurcation.find('value').text + ';'
             value = int(difurcation.find('value').text)
             links_xml = difurcation.find('links')
             links_counter = 0
             links_found = False
-            if links_xml is not None:           # See if there is also links description
+            if links_xml is not None:  # See if there is also links description
                 links_found = True
-                for link_xml in links_xml.findall('link'):         # For all links information
+                for link_xml in links_xml.findall('link'):  # For all links information
                     links_counter += 1
 
                     # Save the type information and check if is correct
@@ -604,18 +778,18 @@ class Network:
         :param col_dom: position of the collision domain to read
         :return: the matrix of collision domains
         """
-        try:                                                                        # Try to open the file
+        try:  # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
         root = tree.getroot()
 
-        collisions_domains_xml = root.findall('netgen_params/collision_domains')    # Position the branch
+        collisions_domains_xml = root.findall('netgen_params/collision_domains')  # Position the branch
         collision_domains_xml = collisions_domains_xml[col_dom]
         collision_domain = []
         for collision_domain_xml in collision_domains_xml.findall('collision_domain'):  # For all collision domains
             links = collision_domain_xml.find('links').text
-            collision_domain.append([int(link) for link in links.split(';')])            # Save into the matrix
+            collision_domain.append([int(link) for link in links.split(';')])  # Save into the matrix
 
         return collision_domain
 
@@ -626,7 +800,7 @@ class Network:
         :param name: name of the xml file
         :return: number of frames, percentages of broadcast, single, multi and locally frames
         """
-        try:                                                                        # Try to open the file
+        try:  # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
@@ -636,8 +810,8 @@ class Network:
         num_frames = []
         frame_parameters = []
         first = True
-        for parameter_xml in parameters_xml.findall('param'):         # For all the parameters
-            try:        # Save the parameters and check if the values are correct
+        for parameter_xml in parameters_xml.findall('param'):  # For all the parameters
+            try:  # Save the parameters and check if the values are correct
                 if first:
                     first = False
                     for n in parameter_xml.findall('value'):
@@ -663,7 +837,7 @@ class Network:
         :param num_variable: posision of the num variable
         :return: lists of periods, percentage periods, deadlines and sizes
         """
-        try:                                                                        # Try to open the file
+        try:  # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
@@ -679,13 +853,13 @@ class Network:
 
         multiple_variables_xml = root.findall('netgen_params/frame_variables')
         variables_xml = multiple_variables_xml[num_variable]
-        for parameter_xml in variables_xml.findall('variable'):                     # For all parameters
-            period.append(int(parameter_xml.find('period').text))                   # Save the period
-            per_period.append(float(parameter_xml.find('per_period').text))           # Save the percentage
-            if parameter_xml.find('deadline') is not None:                              # Save the deadline if exists
+        for parameter_xml in variables_xml.findall('variable'):  # For all parameters
+            period.append(int(parameter_xml.find('period').text))  # Save the period
+            per_period.append(float(parameter_xml.find('per_period').text))  # Save the percentage
+            if parameter_xml.find('deadline') is not None:  # Save the deadline if exists
                 deadlines = True
                 deadline.append(float(parameter_xml.find('deadline').text))
-            if parameter_xml.find('deadline') is not None:                              # Save the size if exists
+            if parameter_xml.find('deadline') is not None:  # Save the size if exists
                 size.append(int(parameter_xml.find('size').text))
                 sizes = True
 
@@ -699,46 +873,113 @@ class Network:
         else:
             return period, per_period, None, None
 
+    @staticmethod
+    def get_dependencies_variables_from_xml(name, num_variable):
+        """
+        Returns the lists of variables for the dependency
+        :param name: name of the xml file
+        :param num_variable: position of the num dependency
+        :return: dependency variables
+        """
+        try:  # Try to open the file
+            tree = Xml.parse(name)
+        except:
+            raise Exception("Could not read the xml file")
+        root = tree.getroot()
+
+        multiple_variables_xml = root.findall('netgen_params/dependency_variables')
+        variables_xml = multiple_variables_xml[num_variable]
+        parameter_xml = variables_xml.find('variable')
+        num_dep = int(parameter_xml.find('num_dep').text)
+        max_succ = int(parameter_xml.find('max_succ').text)
+        max_dep = int(parameter_xml.find('max_dep').text)
+        min_time_waiting = int(parameter_xml.find('min_time_waiting').text)
+        max_time_waiting = int(parameter_xml.find('max_time_waiting').text)
+        min_time_deadline = int(parameter_xml.find('min_time_deadline').text)
+        max_time_deadline = int(parameter_xml.find('max_time_deadline').text)
+        per_waiting = float(parameter_xml.find('per_waiting').text)
+        per_deadline = float(parameter_xml.find('per_deadline').text)
+        per_both = float(parameter_xml.find('per_both').text)
+
+        return num_dep, max_succ, max_dep, min_time_waiting, max_time_waiting, min_time_deadline, max_time_deadline, \
+               per_waiting, per_deadline, per_both
+
+    @staticmethod
+    def __autohash(key):
+        """
+        Manuel hash
+        :param key: string key
+        :return: hash in 32 bits
+        """
+        a = 54059
+        b = 76963
+        c = 86969
+        firsth = 37
+        h = firsth
+        for letter in key:
+            h = (h * a) ^ (ord(letter) * b)
+        h = h % c
+        return h
+
     def create_network_from_xml(self, name):
         """
         Create the network from the information from the xml
         :param name: name of the xml file
         :return: None
         """
-        try:                                                                        # Try to open the file
+        try:  # Try to open the file
             tree = Xml.parse(name)
         except:
             raise Exception("Could not read the xml file")
-        os.makedirs("networks")
+        try:
+            os.makedirs("networks")
+        except FileExistsError:  # If the directory exists
+            shutil.rmtree('networks')
+            os.makedirs("networks")
         root = tree.getroot()
         num_network_description_xml = len(root.findall('netgen_params/network_description'))  # Numbers of network
         num_collision_domains_xml = len(root.findall('netgen_params/collision_domains'))
         if num_collision_domains_xml != num_network_description_xml:
             raise Exception('Every network description should have its collision domain')
         num_variables_xml = len(root.findall('netgen_params/frame_variables'))
+        num_dependencies_xml = len(root.findall('netgen_params/dependency_variables'))
         num_frames, percentages = self.get_frames_description_from_xml(name)
         for num_network in range(num_network_description_xml):
             network, link = self.get_network_description_from_xml(name, num_network)
             for num_frame in num_frames:
                 for num_percentage in range(len(percentages[0])):
                     for num_variables in range(num_variables_xml):
-                        collision_domains = self.get_collision_domains_xml(name, num_network)
-                        periods, per_periods, deadlines, sizes = self.get_frames_variables_from_xml(name, num_variables)
-                        self.create_network(network, link)
-                        self.generate_paths()
-                        self.define_collision_domains(collision_domains)
-                        self.generate_frames(num_frame, percentages[0][num_percentage], percentages[1][num_percentage],
-                                             percentages[3][num_percentage], percentages[2][num_percentage])
-                        self.add_frame_params(periods, per_periods, deadlines, sizes)
-                        string_for_hash = "net-" + network + "&link-" + link + "&frame-" + str(num_frame) + "&per-"
-                        string_for_hash += str(percentages[0][num_percentage]) + ","
-                        string_for_hash += str(percentages[1][num_percentage]) + ","
-                        string_for_hash += str(percentages[3][num_percentage]) + ","
-                        string_for_hash += str(percentages[2][num_percentage]) + "&period-" + str(periods)
-                        string_for_hash += "&per_periods-" + str(per_periods) + "&deadlines-" + str(deadlines)
-                        string_for_hash += "&sizes-" + str(sizes)
-                        hash_num = hash(string_for_hash)
-                        hash_num += sys.maxsize + 1
-                        os.makedirs("networks/" + str(hash_num))
-                        os.makedirs("networks/" + str(hash_num) + "/schedules")
-                        self.generate_xml_output("networks/" + str(hash_num) + "/" + str(hash_num))
+                        for num_dependencies in range(num_dependencies_xml):
+                            collision_domains = self.get_collision_domains_xml(name, num_network)
+                            periods, per_periods, deadlines, sizes = self.get_frames_variables_from_xml(name,
+                                                                                                        num_variables)
+                            num_dep, max_succ, max_dep, min_time_waiting, max_time_waiting, min_time_deadline, \
+                            max_time_deadline, per_waiting, per_deadline, per_both = \
+                                self.get_dependencies_variables_from_xml(name, num_dependencies)
+                            self.create_network(network, link)
+                            self.generate_paths()
+                            self.define_collision_domains(collision_domains)
+                            self.generate_frames(num_frame, percentages[0][num_percentage],
+                                                 percentages[1][num_percentage], percentages[3][num_percentage],
+                                                 percentages[2][num_percentage])
+                            self.add_frame_params(periods, per_periods, deadlines, sizes)
+                            self.generate_dependencies(num_dep, max_succ, max_dep, min_time_waiting, max_time_waiting,
+                                                       min_time_deadline, max_time_deadline, per_waiting, per_deadline,
+                                                       per_both)
+                            string_for_hash = "net-" + network + "&link-" + link + "&frame-" + str(num_frame) + "&per-"
+                            string_for_hash += str(percentages[0][num_percentage]) + ","
+                            string_for_hash += str(percentages[1][num_percentage]) + ","
+                            string_for_hash += str(percentages[3][num_percentage]) + ","
+                            string_for_hash += str(percentages[2][num_percentage]) + "&period-" + str(periods)
+                            string_for_hash += "&per_periods-" + str(per_periods) + "&deadlines-" + str(deadlines)
+                            string_for_hash += "&sizes-" + str(sizes) + "&num_dep-" + str(num_dep) + "&max_suc-"
+                            string_for_hash += str(max_succ) + "&max_dep-" + str(max_dep) + "&min_time_waiting"
+                            string_for_hash += str(min_time_waiting) + "&max_time_waiting-" + str(max_time_waiting)
+                            string_for_hash += "&min_time_deadline" + str(min_time_deadline) + "&max_time_deadline"
+                            string_for_hash += str(max_time_deadline) + "&per_waiting-" + str(per_waiting)
+                            string_for_hash += "&per_deadline" + str(per_deadline) + "&per_both-" + str(per_both)
+                            print(string_for_hash)
+                            hash_num = self.__autohash(string_for_hash)
+                            os.makedirs("networks/" + str(hash_num))
+                            os.makedirs("networks/" + str(hash_num) + "/schedules")
+                            self.generate_xml_output("networks/" + str(hash_num) + "/" + str(hash_num))

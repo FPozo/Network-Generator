@@ -47,22 +47,22 @@ class Dependency:
         # Check if the types and values are correct
         if type(predecessor_frame) != int:
             raise TypeError("The predecessor frame must be an integer")
-        if predecessor_frame <= 0:
+        if predecessor_frame < 0:
             raise ValueError("The predecessor frame id must be a positive integer")
 
         if type(predecessor_link) != int:
             raise TypeError("The predecessor link must be an integer")
-        if predecessor_link <= 0:
+        if predecessor_link < 0:
             raise ValueError("The predecessor link id must be a positive integer")
 
         if type(successor_frame) != int:
             raise TypeError("The successor frame must be an integer")
-        if successor_frame <= 0:
+        if successor_frame < 0:
             raise ValueError("The successor frame id must be a positive integer")
 
         if type(successor_link) != int:
             raise TypeError("The successor link must be an integer")
-        if successor_link <= 0:
+        if successor_link < 0:
             raise ValueError("The successor link id must be a positive integer")
 
         if type(waiting_time) != int:
@@ -76,7 +76,7 @@ class Dependency:
             raise ValueError("The deadline time id must be a positive integer")
 
         # Check if there is consistency between deadline and waiting times
-        if deadline_time < waiting_time:
+        if deadline_time < waiting_time and deadline_time != 0:
             raise ValueError("The waiting time must be smaller than the deadline time")
         if deadline_time == 0 and waiting_time == 0:
             raise ValueError("At least waiting or deadline time must be greater than 0")
@@ -101,3 +101,45 @@ class Dependency:
         return_text += "    Waiting time         : " + str(self.__waiting_time) + " microseconds\n"
         return_text += "    Deadline time        : " + str(self.__deadline_time) + " microseconds"
         return return_text
+
+    def get_pred_frame(self):
+        """
+        Gets the predecessor index frame
+        :return: predecessor index frame
+        """
+        return self.__predecessor_frame
+
+    def get_pred_link(self):
+        """
+        Gets the predecessor lind id
+        :return: predecessor link id
+        """
+        return self.__predecessor_link
+
+    def get_succ_frame(self):
+        """
+        Gets the successor index frame
+        :return: successor index frame
+        """
+        return self.__successor_frame
+
+    def get_succ_link(self):
+        """
+        Gets the successor link id
+        :return: successor link id
+        """
+        return self.__successor_link
+
+    def get_waiting_time(self):
+        """
+        Gets the waiting time
+        :return: waiting time
+        """
+        return self.__waiting_time
+
+    def get_deadline_time(self):
+        """
+        Gets the deadline time
+        :return: deadline time
+        """
+        return self.__deadline_time
