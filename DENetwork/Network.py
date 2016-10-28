@@ -458,7 +458,14 @@ class Network:
                 break
             if random() < ((max_succ - i) / max_succ):  # If lord random wants a successor
                 # Select the successor of the dependency
-                succ_frame = choice(aux_frames)
+                aux_aux_frames = aux_frames = copy.copy(aux_frames)
+                succ_frame = choice(aux_aux_frames)
+                while (succ_frame.get_period() != self.__frames[pred_frame_index].get_period() and len(
+                        aux_aux_frames) != 0):
+                    aux_aux_frames.remove(succ_frame)
+                    succ_frame = choice(aux_frames)
+                if len(aux_aux_frames) == 0:
+                    break
                 succ_frame_index = self.__frames.index(succ_frame)
                 aux_frames.remove(succ_frame)
                 # Get the link of the successor
