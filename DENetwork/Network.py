@@ -24,7 +24,6 @@ import xml.etree.ElementTree as Xml
 from xml.dom import minidom
 import os
 import shutil
-from decimal import *
 
 
 class Network:
@@ -45,6 +44,7 @@ class Network:
     __collision_domains = []  # Matrix with list of links that share the same frequency
     __num_dependencies = 0  # Number of dependencies
     __dependencies = []  # List of dependencies
+    __aux_frames = []  # Auxiliar array of frames to create dependencies
 
     # Auxiliary variable definitions #
 
@@ -430,12 +430,11 @@ class Network:
                 else:
                     accumulate_period += per_period  # If not, advance in the list
 
-    def __add_dependencies(self, aux_frames, number_dep, max_succ, actual_depth, max_depth, min_time_waiting,
+    def __add_dependencies(self, number_dep, max_succ, actual_depth, max_depth, min_time_waiting,
                            max_time_waiting, min_time_deadline, max_time_deadline, per_waiting, per_deadline, per_both,
                            pred_frame_index, pred_link):
         """
         Fills the dependency tree from its root with a max depth and successors with a recursive function
-        :param aux_frames: array of frames where we will ubuilt our dependencies
         :param number_dep: number of desired dependencies
         :param max_succ: max successor of dependencies at the tree
         :param actual_depth: depth of the dependendecy tree in this recursive call
@@ -454,20 +453,21 @@ class Network:
         for i in range(max_succ):
             if len(self.__dependencies) == number_dep:  # If we generated enough dependencies
                 break
-            if len(aux_frames) == 0:  # If we cannot generate more dependencies
+            if len(self.__aux_frames) == 0:  # If we cannot generate more dependencies
                 break
             if random() < ((max_succ - i) / max_succ):  # If lord random wants a successor
                 # Select the successor of the dependency
-                aux_aux_frames = aux_frames = copy.copy(aux_frames)
+                aux_aux_frames = copy.copy(self.__aux_frames)
                 succ_frame = choice(aux_aux_frames)
-                while (succ_frame.get_period() != self.__frames[pred_frame_index].get_period() and len(
-                        aux_aux_frames) != 0):
+                while succ_frame.get_period() != self.__frames[pred_frame_index].get_period() and \
+                    len(aux_aux_frames) != 0 and succ_frame.get_deadline() != \
+                        self.__frames[pred_frame_index].get_deadline():
                     aux_aux_frames.remove(succ_frame)
-                    succ_frame = choice(aux_frames)
+                    succ_frame = choice(aux_aux_frames)
                 if len(aux_aux_frames) == 0:
                     break
                 succ_frame_index = self.__frames.index(succ_frame)
-                aux_frames.remove(succ_frame)
+                self.__aux_frames.remove(succ_frame)
                 # Get the link of the successor
                 succ_sender = succ_frame.get_sender()
                 succ_receiver = choice(succ_frame.get_receivers())
@@ -488,7 +488,7 @@ class Network:
                                                       wait_time, dead_time))
 
                 if random() < ((max_depth - actual_depth) / max_depth):  # If lord random wants more depth
-                    self.__add_dependencies(aux_frames, number_dep, max_succ, actual_depth + 1, max_depth,
+                    self.__add_dependencies(number_dep, max_succ, actual_depth + 1, max_depth,
                                             min_time_waiting, max_time_waiting, min_time_deadline, max_time_deadline,
                                             per_waiting, per_deadline, per_both, succ_frame_index, succ_link)
             else:
@@ -507,7 +507,7 @@ class Network:
         :param max_succ: max successor of dependencies at the tree
         :param max_depth: max depth of dependencies at the tree
         :param min_time_waiting: min time offset desired for waiting dependencies
-        :param min_time_waiting: max time offset desired for waiting dependencies
+        :param max_time_waiting: max time offset desired for waiting dependencies
         :param min_time_deadline: min time offset desired for deadline dependencies
         :param max_time_deadline: max time offset desired for deadline dependencies
         :param per_waiting: percentage of waiting dependencies
@@ -567,19 +567,19 @@ class Network:
         per_deadline /= sum_per
         per_both /= sum_per
 
-        aux_frames = copy.copy(self.__frames)
+        self.__aux_frames = copy.copy(self.__frames)
         # While there are dependencies to make, or it is not possible to do more
-        while (len(self.__dependencies) < number_dep) and (len(aux_frames) > 0):
+        while (len(self.__dependencies) < number_dep) and (len(self.__aux_frames) > 0):
             # Choose predecesor frame and remove it from the frames list
-            pred_frame = choice(aux_frames)
+            pred_frame = choice(self.__aux_frames)
             pred_frame_index = self.__frames.index(pred_frame)
-            aux_frames.remove(pred_frame)
+            self.__aux_frames.remove(pred_frame)
             # Get sender and receivers to take the last link of its path
             pred_sender = pred_frame.get_sender()
             pred_receiver = choice(pred_frame.get_receivers())
             pred_link = self.__paths[pred_sender][pred_receiver][-1]
             # Call the recursive function to start building the tree from that root dependency
-            self.__add_dependencies(aux_frames, number_dep, max_succ, 0, max_depth, min_time_waiting, max_time_waiting,
+            self.__add_dependencies(number_dep, max_succ, 0, max_depth, min_time_waiting, max_time_waiting,
                                     min_time_deadline, max_time_deadline, per_waiting, per_deadline, per_both,
                                     pred_frame_index, pred_link)
             self.__num_dependencies = len(self.__dependencies)
@@ -909,7 +909,7 @@ class Network:
         per_both = float(parameter_xml.find('per_both').text)
 
         return num_dep, max_succ, max_dep, min_time_waiting, max_time_waiting, min_time_deadline, max_time_deadline, \
-               per_waiting, per_deadline, per_both
+            per_waiting, per_deadline, per_both
 
     @staticmethod
     def __autohash(key):
@@ -925,7 +925,7 @@ class Network:
         h = firsth
         for letter in key:
             h = (h * a) ^ (ord(letter) * b)
-        h = h % c
+        h %= c
         return h
 
     def create_network_from_xml(self, name):
@@ -961,7 +961,7 @@ class Network:
                             periods, per_periods, deadlines, sizes = self.get_frames_variables_from_xml(name,
                                                                                                         num_variables)
                             num_dep, max_succ, max_dep, min_time_waiting, max_time_waiting, min_time_deadline, \
-                            max_time_deadline, per_waiting, per_deadline, per_both = \
+                                max_time_deadline, per_waiting, per_deadline, per_both = \
                                 self.get_dependencies_variables_from_xml(name, num_dependencies)
                             self.create_network(network, link)
                             self.generate_paths()
